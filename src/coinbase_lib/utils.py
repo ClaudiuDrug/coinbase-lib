@@ -1,19 +1,19 @@
 # -*- coding: UTF-8 -*-
 
 from datetime import datetime, timezone
-from logging import Logger, getLogger, StreamHandler, Formatter
-from typing import Union
+from logging import getLogger, Logger, StreamHandler, Formatter
+from typing import Union, Any
 
-__all__ = ["decode", "encode", "get_posix", "get_utc", "get_logger"]
+from requests import Response
+from requests_toolbelt.utils import dump
 
 
 def decode(value: Union[bytes, str], **kwargs) -> str:
     """
-    Decode the bytes value using the codec registered for encoding.
+    Decode the bytes using the codec registered for encoding.
 
     :param value: Value to be decoded.
     :param kwargs: Additional keyword arguments.
-    :return: Decoded string.
     """
     if isinstance(value, bytes):
         return value.decode(**kwargs)
@@ -22,11 +22,10 @@ def decode(value: Union[bytes, str], **kwargs) -> str:
 
 def encode(value: Union[str, bytes], **kwargs) -> bytes:
     """
-    Encode the string value using the codec registered for encoding.
+    Encode the string using the codec registered for encoding.
 
     :param value: Value to be encoded.
     :param kwargs: Additional keyword arguments.
-    :return: Encoded string.
     """
     if isinstance(value, str):
         return value.encode(**kwargs)
@@ -47,19 +46,31 @@ def get_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def extract_msg(response: Response, **kwargs) -> str:
+    """
+    Dump all requests and responses including redirects.
+    This takes the response returned by requests and will dump all
+    request-response pairs in the redirect history in order followed by the
+    final request-response.
+
+    :param response: The response returned by requests.
+    :param kwargs: Additional keyword arguments.
+    """
+    return decode(
+        dump.dump_all(response),
+        **kwargs
+    )
+
+
 def get_logger(name: str, level: int, fmt: str) -> Logger:
     """
-    Create a logger and with severity level `DEBUG`.
-
-    :param name: Instance name.
-    :param level: Severity level.
-    :param fmt: Log message format.
-    :return: A logger instance.
+    Create and return a logger instance that outputs messages to console.
     """
+    # create a logger and set level to debug:
     logger: Logger = getLogger(name)
     logger.setLevel(level)
 
-    # create console handler and set level to debug:
+    # create console handler and set ths level:
     handler = StreamHandler()
     handler.setLevel(level)
 
@@ -72,3 +83,14 @@ def get_logger(name: str, level: int, fmt: str) -> Logger:
     # add console to logger:
     logger.addHandler(handler)
     return logger
+
+
+def as_str(value: Any) -> str:
+    """
+    Convert any given `value` to `str`.
+
+    :param value: Value to be converted.
+    """
+    if not isinstance(value, str):
+        return str(value)
+    return value

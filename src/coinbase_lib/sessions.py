@@ -1,87 +1,63 @@
 # -*- coding: UTF-8 -*-
 
-from logging import Logger, DEBUG
+from logging import Logger, getLogger
 
 from requests import Session, Response
 from requests.adapters import HTTPAdapter
 from requests_cache import install_cache
-from requests_toolbelt.utils import dump
 from urllib3.util.retry import Retry
 
-from .constants import (
-    NAME, FMT, RETRIES, BACKOFF, TIMEOUT,
-    DEBUGGING, ENCODING, HEADERS
-)
-from .utils import decode, get_logger
-
-__all__ = ["TimeoutHTTPAdapter", "BaseSession"]
+from .constants import CACHE, HEADERS, NAME
+from .utils import extract_msg
 
 
 class TimeoutHTTPAdapter(HTTPAdapter):
     """Custom HTTP adapter with timeout capability."""
 
-    def __init__(self, *args, **kwargs):
-        self._timeout = kwargs.pop("timeout")
-        super(TimeoutHTTPAdapter, self).__init__(*args, **kwargs)
+    def __init__(self, retries: int = 3, backoff: float = 1, timeout: int = 30):
+        self._timeout = timeout
+        max_retries = Retry(
+            total=retries,
+            backoff_factor=backoff
+        )
+        super(TimeoutHTTPAdapter, self).__init__(max_retries=max_retries)
 
     def send(self, request, **kwargs):
-        kwargs.update({"timeout": self._timeout})
-        return super(TimeoutHTTPAdapter, self).send(request, **kwargs)
+        return super(TimeoutHTTPAdapter, self).send(request, timeout=self._timeout, **kwargs)
 
 
 class BaseSession(Session):
-    """Base `Session` handler."""
+    """Base `Session`."""
 
-    _log = get_logger(NAME, level=DEBUG, fmt=FMT)
-
-    @staticmethod
-    def _http_adapter(retries: int, backoff: int, timeout: int) -> TimeoutHTTPAdapter:
-        return TimeoutHTTPAdapter(
-            max_retries=Retry(
-                total=retries,
-                backoff_factor=backoff
-            ),
-            timeout=timeout
-        )
-
-    @staticmethod
-    def _extract_data(response: Response, **kwargs) -> str:
-        return decode(
-            dump.dump_all(response),
-            **kwargs
-        )
-
-    @staticmethod
-    def _install_cache(name: str, backend: str, expire: int):
-        install_cache(
-            cache_name=name,
-            backend=backend,
-            expire_after=expire
-        )
+    _log: Logger = getLogger(NAME)
 
     def __init__(
             self,
-            retries: int = RETRIES,
-            backoff: int = BACKOFF,
-            timeout: int = TIMEOUT,
-            debug: bool = DEBUGGING,
-            logger: Logger = None,
-            cache: dict = None,
+            retries: int = 3,
+            backoff: int = 1,
+            timeout: int = 30,
+            cache: bool = True,
+            debug: bool = False,
+            logger: Logger = None
     ):
         """
-        :param retries: Total number of retries to allow.
+        :param retries: Total number of retries to allow (defaults to: 3).
         :param backoff: A backoff factor to apply between attempts after the
-            second try.
+            second try (defaults to: 1).
         :param timeout: How long to wait for the server to send data before
-            giving up.
-        :param cache: A dictionary with `name`, `backend` and `expire` as keys.
-        :param debug: Set to True to log all requests/responses to/from server.
+            giving up (defaults to: 30).
+        :param cache: Use caching (defaults to: `True`);
+        :param debug: Set to True to log all requests/responses to/from server
+            (defaults to: `False`).
         :param logger: The handler to be used for logging. If given, and level
             is above `DEBUG`, all debug messages will be ignored.
         """
-
-        if cache is not None:
-            self._install_cache(**cache)
+        if cache is True:
+            install_cache(
+                cache_name=CACHE.NAME,
+                backend=CACHE.BACKEND,
+                expire_after=CACHE.EXPIRE
+            )
 
         if logger is not None:
             self._log = logger
@@ -92,18 +68,17 @@ class BaseSession(Session):
 
         self.mount(
             "http://",
-            self._http_adapter(retries, backoff, timeout)
+            TimeoutHTTPAdapter(retries, backoff, timeout)
         )
 
         self.mount(
             "https://",
-            self._http_adapter(retries, backoff, timeout)
+            TimeoutHTTPAdapter(retries, backoff, timeout)
         )
 
         if debug is True:
-            self.hooks["response"] = [self._debug]
+            self.hooks["response"] = [self.debug]
 
-    def _debug(self, response: Response, *args, **kwargs):
-        self._log.debug(
-            msg=self._extract_data(response, encoding=ENCODING, errors="ignore")
-        )
+    def debug(self, response: Response, *args, **kwargs):
+        message: str = extract_msg(response)
+        self._log.debug(message)

@@ -12,7 +12,7 @@ from requests.models import PreparedRequest
 from ..constants import ENCODING
 from ..utils import encode, decode, get_posix
 
-__all__ = ["SessionAuth", "WSAuth"]
+__all__ = ["WSAuth", "SessionAuth"]
 
 
 class HMACBase(ABC):
@@ -47,10 +47,10 @@ class HMACBase(ABC):
     @staticmethod
     def _headers(key: str, signature: bytes, timestamp: str, passphrase: str) -> dict:
         return {
-            "CB-ACCESS-KEY": decode(key, encoding=ENCODING),
+            "CB-ACCESS-KEY": key,
             "CB-ACCESS-SIGN": decode(signature, encoding=ENCODING),
-            "CB-ACCESS-TIMESTAMP": decode(timestamp, encoding=ENCODING),
-            "CB-ACCESS-PASSPHRASE": decode(passphrase, encoding=ENCODING),
+            "CB-ACCESS-TIMESTAMP": timestamp,
+            "CB-ACCESS-PASSPHRASE": passphrase,
         }
 
     def __init__(self, key: str, passphrase: str, secret: str):
@@ -87,10 +87,10 @@ class WSAuth(HMACBase):
     @staticmethod
     def _headers(key: str, signature: bytes, timestamp: str, passphrase: str) -> dict:
         return {
-            "key": decode(key, encoding=ENCODING),
+            "key": key,
             "signature": decode(signature, encoding=ENCODING),
-            "timestamp": decode(timestamp, encoding=ENCODING),
-            "passphrase": decode(passphrase, encoding=ENCODING),
+            "timestamp": timestamp,
+            "passphrase": passphrase,
         }
 
     def sign(self, method: str, path: str, params: dict):
